@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Medicine Finder</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        h1 { background-color: rgba(183, 250, 228, 1); color: green; text-align: center;}
+
+        .container {
+            max-width: 500px;
+            margin: auto;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            border-radius: 6px;
+            border: 1px solid #aaa;
+            font-size: 16px;
+        }
+
+        button {
+            background: green;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .alarm {
+            padding: 10px;
+            background: #f5f5f5;
+            margin-top: 10px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-small {
+            padding: 6px 10px;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+    </style>
+
+    <!-- Real-time Clock -->
+    <script>
+        function updateClock() {
+            document.getElementById("clock").innerText =
+                new Date().toLocaleString();
+        }
+        setInterval(updateClock, 1000);
+    </script>
+
+    <!-- Ask permission for browser notifications -->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            if (Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+        });
+    </script>
+
+   <script>
+    let audio = new Audio("/static/alarm.mp3");
+    let alarmDismissed = false;   // <<< important flag
+    let lastAlarmName = "";       // to avoid repeat during same minute
+
+    async function pollAlarms() {
+        const response = await fetch("/check_alarm/");
+        const data = await response.json();
+
+        if (data.ring && !alarmDismissed) {
+
+            // Prevent repeating within the same minute
+            if (lastAlarmName !== data.name) {
+                lastAlarmName = data.name;
+
+                showPopup(data.name);
+                audio.play();
+            }
+        }
+    }
+
+    function showPopup(medicineName) {
+        document.getElementById("medicineName").textContent = "Take: " + medicineName;
+        document.getElementById("alarmPopup").style.display = "block";
+    }
+
+    function stopAlarm() {
+        audio.pause();
+        audio.currentTime = 0;          // reset
+        document.getElementById("alarmPopup").style.display = "none";
+
+        alarmDismissed = true;          // <<< do NOT trigger again this minute
+
+        // reset flag after 60 seconds
+        setTimeout(() => {
+            alarmDismissed = false;
+            lastAlarmName = "";
+        }, 60000);
+    }
+
+    // Allow autoplay
+    document.addEventListener("click", () => {
+        audio.play().then(() => audio.pause());
+    }, { once: true });
+
+    setInterval(pollAlarms, 1000);
+</script>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1 >Medicine Finder</h1>
+
+    <h3>Current Date & Time:</h3>
+    <div id="clock" style="font-size: 22px; font-weight: bold;"></div>
+
+    <h3 style="margin-top: 20px;">Add Medicine Alarm</h3>
+
+    <form action="/add_alarm" method="POST">
+        {% csrf_token %}
+        <input type="date" name="alarm_date" required>
+        <input type="time" name="alarm_time" required>
+        <input type="text" name="medicine_name" placeholder="Medicine Name" required>
+        <button type="submit">Add Alarm</button>
+    </form>
+
+    <h3 style="margin-top: 25px;">Your Alarms</h3>
+
+    {% for alarm in alarms %}
+        <div class="alarm">
+            <div>
+                <b>{{ alarm.date }} | {{ alarm.time }}</b><br>
+                {{ alarm.name }}
+            </div>
+
+            <div>
+                <a href="/toggle/{{ alarm.id }}">
+                    <button class="btn-small" style="background: {% if alarm.enabled %}orange{% else %}gray{% endif %};">
+                        {% if alarm.enabled %}OFF{% else %}ON{% endif %}
+                    </button>
+                </a>
+
+                <a href="/delete/{{ alarm.id }}">
+                    <button class="btn-small" style="background: red;">Delete</button>
+                </a>
+            </div>
+        </div>
+    {% endfor %}
+
+</div>
+
+<!-- POPUP BOX FOR ALARM -->
+<div id="alarmPopup" style="
+    display:none;
+    position: fixed;
+    top: 30%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0px 0px 10px black;
+    text-align: center;
+    z-index: 9999;
+">
+    <h2 id="medicineName"></h2>
+    <button onclick="stopAlarm()" style="
+        background: red;
+        color: white;
+        padding: 10px 20px; 
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    ">STOP</button>
+</div>
+
+</body>
+</html>
